@@ -7,12 +7,14 @@ import (
 	"io"
 	"net/http"
 	"ride-sharing/services/trip-service/internal/domain"
+	"ride-sharing/shared/env"
 	"ride-sharing/shared/proto/trip"
 	"ride-sharing/shared/types"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	tripTypes "ride-sharing/services/trip-service/pkg/types"
+	pbd "ride-sharing/shared/proto/driver"
 )
 
 type service struct {
@@ -40,7 +42,8 @@ func (s *service) CreateTrip(ctx context.Context, fare *domain.RideFareModel) (*
 }
 
 func (s *service) GetRoute(ctx context.Context, pickup, destination *types.Coordinate) (*tripTypes.OsrmApiResponse, error) {
-	baseURL := "http://router.project-osrm.org"
+	// or use our self hosted API (check the course lesson: "Preparing for External API Failures")
+	baseURL := env.GetString("OSRM_API", "http://router.project-osrm.org")
 
 	url := fmt.Sprintf(
 		"%s/route/v1/driving/%f,%f;%f,%f?overview=full&geometries=geojson",
@@ -94,6 +97,7 @@ func (s *service) GenerateTripFares(
 			UserID:            userID,
 			PackageSlug:       f.PackageSlug,
 			TotalPriceInCents: f.TotalPriceInCents,
+			Route:             route,
 		}
 
 		// TODO: Save fares to DB
@@ -161,4 +165,12 @@ func (s *service) GetAndValidateFare(ctx context.Context, fareID, userID string)
 	}
 
 	return fare, nil
+}
+
+func (s *service) UpdateTrip(ctx context.Context, tripId string, status string, driver *pbd.Driver) error {
+	return s.repo.UpdateTrip(ctx, tripId, status, driver)
+}
+
+func (s *service) GetTripByID(ctx context.Context, tripID string) (*domain.TripModel, error) {
+	return s.repo.GetTripByID(ctx, tripID)
 }

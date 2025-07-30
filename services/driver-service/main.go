@@ -6,6 +6,8 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"ride-sharing/shared/env"
+	"ride-sharing/shared/messaging"
 	"syscall"
 
 	"google.golang.org/grpc"
@@ -29,9 +31,29 @@ func main() {
 		log.Fatalf("Failed to listen: %v", err)
 	}
 
+	rabbitMqURI := env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
+
+	// RabbitMQ connection
+	rabbitmq, err := messaging.NewRabbitMQ(rabbitMqURI)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rabbitmq.Close()
+	log.Println("Starting RabbitMQ connection")
+
+	// Initialize the driver service
+	service := NewService()
+
+	consumer := NewTripConsumer(rabbitmq, service)
+	go func() {
+		if err := consumer.Listen(ctx); err != nil {
+			log.Printf("Failed to listen to the message: %v", err)
+		}
+	}()
+
 	// Starting the gRPC service
 	grpcServer := grpc.NewServer()
-	NewGRPCHandler(grpcServer, NewService())
+	NewGRPCHandler(grpcServer, service)
 
 	log.Printf("Starting gRPC Driver Service on port %s", lis.Addr().String())
 	go func() {
